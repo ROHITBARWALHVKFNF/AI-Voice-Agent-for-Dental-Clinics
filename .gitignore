@@ -1,0 +1,30 @@
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Next.js
+node_modules/
+.next/
+out/
+
+# Local logs
+*.log
+
+# Local audio recordings and backup files
+*.wav
+*.bak
+*.backup
+*.backups
+
+# Environment files at any directory depth
+**/.env
+**/.env.*
+!**/.env.example
