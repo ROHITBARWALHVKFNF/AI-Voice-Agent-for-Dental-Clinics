@@ -1,4 +1,3 @@
-
 import calendar
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -288,7 +287,8 @@ class AvailabilityService:
 
         if weekly is None and override is None:
             return AvailabilityService._failure(
-                "No doctor schedule configured"
+                "This doctor has no working hours set for this weekday. "
+                "Set them under Doctors > Manage Schedule."
             )
 
         organization_id = (

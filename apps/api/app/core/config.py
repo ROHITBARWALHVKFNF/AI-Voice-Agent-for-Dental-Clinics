@@ -7,9 +7,7 @@ class Settings(BaseSettings):
     REDIS_URL: str
 
     # AI configuration — secrets belong in .env
-    GEMINI_API_KEY: str = "import os
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")"
+    GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.1-flash-lite"
     SARVAM_API_KEY: str = ""
 

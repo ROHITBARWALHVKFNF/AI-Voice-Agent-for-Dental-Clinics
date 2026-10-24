@@ -1,8 +1,9 @@
+
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -24,12 +25,25 @@ class DoctorCreate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     bio: Optional[str] = None
+    experience_years: Optional[int] = Field(default=None, ge=0, le=80)
+    education: Optional[str] = None
+
+
+class DoctorUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: Optional[str] = None
+    specialization: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    bio: Optional[str] = None
+    experience_years: Optional[int] = None
+    education: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class DoctorResponse(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True
-    )
+    model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     organization_id: UUID
@@ -39,6 +53,8 @@ class DoctorResponse(BaseModel):
     email: Optional[str]
     bio: Optional[str]
     is_active: bool
+    experience_years: Optional[int]
+    education: Optional[str]
 
 
 @router.post(
@@ -50,13 +66,6 @@ def create_doctor(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Create a doctor inside the authenticated user's organization.
-
-    The organization_id is NEVER accepted from the client.
-    It always comes from the authenticated user's JWT/database record.
-    """
-
     organization_id = current_user.organization_id
 
     doctor = Doctor(
@@ -84,10 +93,6 @@ def list_doctors(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Return only active doctors belonging to the authenticated user's organization.
-    """
-
     organization_id = current_user.organization_id
 
     doctors = db.scalars(
@@ -96,9 +101,7 @@ def list_doctors(
             Doctor.organization_id == organization_id,
             Doctor.is_active.is_(True),
         )
-        .order_by(
-            Doctor.full_name.asc()
-        )
+        .order_by(Doctor.full_name.asc())
     ).all()
 
     return doctors
@@ -113,9 +116,37 @@ def get_doctor(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    organization_id = current_user.organization_id
+
+    doctor = db.scalar(
+        select(Doctor).where(
+            Doctor.id == doctor_id,
+            Doctor.organization_id == organization_id,
+        )
+    )
+
+    if not doctor:
+        raise HTTPException(
+            status_code=404,
+            detail="Doctor not found",
+        )
+
+    return doctor
+
+
+@router.patch(
+    "/{doctor_id}",
+    response_model=DoctorResponse,
+)
+def update_doctor(
+    doctor_id: UUID,
+    doctor_data: DoctorUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
-    Return a doctor only if that doctor belongs to the authenticated
-    user's organization.
+    Update editable doctor fields within the authenticated user's organization.
+    Only fields included in the request are changed.
     """
 
     organization_id = current_user.organization_id
@@ -132,5 +163,30 @@ def get_doctor(
             status_code=404,
             detail="Doctor not found",
         )
+
+    changes = doctor_data.model_dump(exclude_unset=True)
+
+    if not changes:
+        raise HTTPException(
+            status_code=400,
+            detail="No fields provided for update",
+        )
+
+    if "full_name" in changes:
+        name = changes["full_name"]
+
+        if name is None or not name.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="Doctor name cannot be empty",
+            )
+
+        changes["full_name"] = name.strip()
+
+    for field, value in changes.items():
+        setattr(doctor, field, value)
+
+    db.commit()
+    db.refresh(doctor)
 
     return doctor

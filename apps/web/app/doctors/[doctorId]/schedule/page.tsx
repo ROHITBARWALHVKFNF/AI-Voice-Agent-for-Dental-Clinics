@@ -11,6 +11,7 @@ import {
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import { SlotCapacityEditor } from "@/components/doctors/SlotCapacityEditor";
+import { WeeklyScheduleEditor } from "@/components/doctors/WeeklyScheduleEditor";
 import { apiJson } from "@/lib/api";
 
 type Doctor = {
@@ -661,6 +662,12 @@ export default function DoctorSchedulePage() {
               </div>
             </section>
 
+            <WeeklyScheduleEditor
+              doctorId={doctorId}
+              schedules={schedules}
+              onSaved={loadData}
+            />
+
             {/* Weekly schedule */}
             <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
@@ -700,7 +707,7 @@ export default function DoctorSchedulePage() {
                                   : "bg-gray-100 text-gray-500",
                               ].join(" ")}
                             >
-                              {item?.is_working ? "Working" : "Day off"}
+                              {item?.is_working ? "Working" : item ? "Day off" : "Not set"}
                             </span>
                           </div>
 

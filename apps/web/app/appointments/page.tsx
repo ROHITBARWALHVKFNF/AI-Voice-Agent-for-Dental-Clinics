@@ -660,8 +660,7 @@ export default function AppointmentsPage() {
 
       const response =
         await apiFetch(
-          `/availability/slots/${doctorId}?requested_date=${date}&slot_duration_minutes=30`
-        );
+          `/availability-slots/${doctorId}?requested_date=${date}&slot_duration_minutes=30`);
 
       const data =
         response instanceof Response

@@ -8,6 +8,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
 
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+
 
 class Doctor(Base):
     __tablename__ = "doctors"
@@ -74,4 +76,13 @@ class Doctor(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+    experience_years: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    education: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
     )
