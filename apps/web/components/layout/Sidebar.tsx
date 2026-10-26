@@ -13,6 +13,12 @@ interface SidebarProps {
     onMobileClose?: () => void;
 }
 
+type NavItem = {
+    name: string;
+    href: string;
+    icon: string;
+};
+
 /* -------------------------------------------------------------------------- */
 /* Icons                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -33,6 +39,8 @@ function Icon({
         strokeWidth: 1.8,
         strokeLinecap: "round" as const,
         strokeLinejoin: "round" as const,
+        "aria-hidden": true as const,
+        focusable: false as const,
     };
 
     switch (name) {
@@ -43,6 +51,17 @@ function Icon({
                     <rect x="14" y="3" width="7" height="7" rx="1" />
                     <rect x="3" y="14" width="7" height="7" rx="1" />
                     <rect x="14" y="14" width="7" height="7" rx="1" />
+                </svg>
+            );
+
+        case "appointments":
+            return (
+                <svg {...common}>
+                    <rect x="4" y="3" width="16" height="18" rx="2" />
+                    <path d="M8 3v4" />
+                    <path d="M16 3v4" />
+                    <path d="M4 8h16" />
+                    <path d="m8 13 2 2 5-5" />
                 </svg>
             );
 
@@ -58,17 +77,6 @@ function Icon({
                     <path d="M16 13h.01" />
                     <path d="M8 17h.01" />
                     <path d="M12 17h.01" />
-                </svg>
-            );
-
-        case "appointments":
-            return (
-                <svg {...common}>
-                    <rect x="4" y="3" width="16" height="18" rx="2" />
-                    <path d="M8 3v4" />
-                    <path d="M16 3v4" />
-                    <path d="M4 8h16" />
-                    <path d="m8 13 2 2 5-5" />
                 </svg>
             );
 
@@ -124,6 +132,16 @@ function Icon({
                 </svg>
             );
 
+        case "finance":
+            return (
+                <svg {...common}>
+                    <rect x="3" y="5" width="18" height="14" rx="2" />
+                    <path d="M3 10h18" />
+                    <path d="M7 15h3" />
+                    <path d="M16 14v2" />
+                </svg>
+            );
+
         case "settings":
             return (
                 <svg {...common}>
@@ -171,54 +189,48 @@ function Icon({
 }
 
 /* -------------------------------------------------------------------------- */
-/* Navigation                                                                 */
+/* Navigation                                                                  */
 /* -------------------------------------------------------------------------- */
 
-const navigation = [
-    {
-        name: "Dashboard",
-        href: "/dashboard",
-        icon: "dashboard",
-    },
-    {
-        name: "Appointments",
-        href: "/appointments",
-        icon: "appointments",
-    },
-    {
-        name: "Calendar",
-        href: "/calendar",
-        icon: "calendar",
-    },
-    {
-        name: "Patients",
-        href: "/patients",
-        icon: "patients",
-    },
-    {
-        name: "Doctors",
-        href: "/doctors",
-        icon: "doctors",
-    },
+const workspaceNavigation: NavItem[] = [
+    { name: "Dashboard", href: "/dashboard", icon: "dashboard" },
+    { name: "Appointments", href: "/appointments", icon: "appointments" },
+    { name: "Calendar", href: "/calendar", icon: "calendar" },
 ];
 
-const crmNavigation = [
-    {
-        name: "CRM Overview",
-        href: "/crm",
-    },
-    {
-        name: "Follow-ups",
-        href: "/crm/follow-ups",
-    },
-    {
-        name: "Treatments",
-        href: "/crm/treatments",
-    },
+const patientNavigation: NavItem[] = [
+    { name: "Patients", href: "/patients", icon: "patients" },
+    { name: "CRM Overview", href: "/crm", icon: "crm" },
+    { name: "Follow-ups", href: "/crm/follow-ups", icon: "followups" },
+    { name: "Treatments", href: "/crm/treatments", icon: "treatments" },
 ];
+
+const operationsNavigation: NavItem[] = [
+    { name: "Doctors", href: "/doctors", icon: "doctors" },
+    { name: "Finance", href: "/finance", icon: "finance" },
+    { name: "Revenue & Profit", href: "/crm/revenue", icon: "finance" },
+];
+
+const aiAutomationNavigation: NavItem[] = [
+    { name: "Knowledge Base", href: "/knowledge-base", icon: "crm" },
+    { name: "Call History", href: "/calls", icon: "appointments" },
+    { name: "Conversations", href: "/conversations", icon: "followups" },
+    { name: "WhatsApp Automation", href: "/whatsapp", icon: "followups" },
+    { name: "Phone Settings", href: "/phone-settings", icon: "settings" },
+    { name: "AI Testing", href: "/ai-testing", icon: "dashboard" },
+];
+
+
+function isRouteActive(pathname: string, href: string) {
+    if (href === "/dashboard" || href === "/crm") {
+        return pathname === href;
+    }
+
+    return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 /* -------------------------------------------------------------------------- */
-/* Sidebar                                                                    */
+/* Sidebar                                                                     */
 /* -------------------------------------------------------------------------- */
 
 export default function Sidebar({
@@ -232,10 +244,6 @@ export default function Sidebar({
     const [crmOpen, setCrmOpen] = useState(
         pathname === "/crm" || pathname.startsWith("/crm/")
     );
-
-    // IMPORTANT:
-    // Do not read localStorage during initial render.
-    // This prevents the hydration mismatch you previously had.
     const [role, setRole] = useState<string | null>(null);
 
     useEffect(() => {
@@ -248,24 +256,53 @@ export default function Sidebar({
         }
     }, [pathname]);
 
-    const isActive = (href: string) => {
-        if (href === "/dashboard") {
-            return pathname === "/dashboard";
-        }
-
-        if (href === "/doctors") {
-            return pathname === "/doctors" || pathname.startsWith("/doctors/");
-        }
-
-        if (href === "/crm") {
-            return pathname === "/crm";
-        }
-
-        return pathname === href;
-    };
-
     const handleNavigation = () => {
         onMobileClose?.();
+    };
+
+    const renderLink = (item: NavItem) => {
+        const active = isRouteActive(pathname, item.href);
+
+        return (
+            <Link
+                key={item.href}
+                href={item.href}
+                onClick={handleNavigation}
+                title={collapsed ? item.name : undefined}
+                aria-current={active ? "page" : undefined}
+                className={[
+                    "group relative flex h-11 items-center rounded-xl transition-all",
+                    collapsed ? "justify-center px-0" : "gap-3 px-3",
+                    active
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                ].join(" ")}
+            >
+                {active && !collapsed && (
+                    <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-white" />
+                )}
+
+                <span className="flex shrink-0 items-center justify-center">
+                    <Icon name={item.icon} size={19} />
+                </span>
+
+                {!collapsed && (
+                    <span className="text-[13px] font-medium">
+                        {item.name}
+                    </span>
+                )}
+            </Link>
+        );
+    };
+
+    const renderSectionLabel = (label: string) => {
+        if (collapsed) return null;
+
+        return (
+            <div className="mb-2 mt-7 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                {label}
+            </div>
+        );
     };
 
     return (
@@ -281,7 +318,6 @@ export default function Sidebar({
             )}
 
             <aside
-                data-sidebar-debug="sidebar-loaded"
                 className={[
                     "fixed left-0 top-0 z-50 flex h-screen flex-col",
                     "border-r border-slate-200 bg-white",
@@ -292,10 +328,7 @@ export default function Sidebar({
                         : "-translate-x-full lg:translate-x-0",
                 ].join(" ")}
             >
-                {/* ---------------------------------------------------------------- */}
-                {/* Brand                                                            */}
-                {/* ---------------------------------------------------------------- */}
-
+                {/* Brand */}
                 <div
                     className={[
                         "flex h-16 shrink-0 items-center border-b border-slate-100",
@@ -306,6 +339,7 @@ export default function Sidebar({
                         href="/dashboard"
                         onClick={handleNavigation}
                         className="flex items-center gap-3"
+                        aria-label="Dental AI Clinic OS home"
                     >
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
                             <span className="text-[17px] font-bold">D</span>
@@ -323,7 +357,6 @@ export default function Sidebar({
                         )}
                     </Link>
 
-                    {/* Desktop collapse button */}
                     {!collapsed && (
                         <button
                             type="button"
@@ -335,7 +368,6 @@ export default function Sidebar({
                         </button>
                     )}
 
-                    {/* Mobile close button */}
                     <button
                         type="button"
                         onClick={onMobileClose}
@@ -346,138 +378,36 @@ export default function Sidebar({
                     </button>
                 </div>
 
-                {/* ---------------------------------------------------------------- */}
-                {/* Navigation                                                       */}
-                {/* ---------------------------------------------------------------- */}
-
-                <div className="flex-1 overflow-y-auto px-3 py-5">
-                    {!collapsed && (
-                        <div className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                            Workspace
-                        </div>
-                    )}
-
-                    <nav className="space-y-1">
-                        {navigation.map((item) => {
-                            const active = isActive(item.href);
-
-                            return (
-                                <Link
-                                    key={item.href}
-                                    href={item.href}
-                                    onClick={handleNavigation}
-                                    title={collapsed ? item.name : undefined}
-                                    className={[
-                                        "group relative flex h-11 items-center rounded-xl transition-all",
-                                        collapsed ? "justify-center px-0" : "gap-3 px-3",
-                                        active
-                                            ? "bg-slate-900 text-white shadow-sm"
-                                            : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-                                    ].join(" ")}
-                                >
-                                    {active && !collapsed && (
-                                        <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-white" />
-                                    )}
-
-                                    <span data-sidebar-icon={item.name}>
-                                        <Icon name={item.icon} size={19} />
-                                    </span>
-                                    {!collapsed && (
-                                        <span className="text-[13px] font-medium">
-                                            {item.name}
-                                        </span>
-                                    )}
-                                </Link>
-                            );
-                        })}
+                {/* Navigation */}
+                <div className="flex-1 overflow-y-auto px-3 py-2">
+                    {renderSectionLabel("Clinic Workspace")}
+                    <nav aria-label="Clinic workspace" className="space-y-1">
+                        {workspaceNavigation.map(renderLink)}
                     </nav>
 
-                    {/* CRM */}
-                    <div className="mt-7">
-                        {!collapsed && (
-                            <div className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                Patient Management
-                            </div>
-                        )}
+                    {renderSectionLabel("Patient Management")}
 
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (collapsed) {
-                                    onToggle();
-                                    setCrmOpen(true);
-                                } else {
-                                    setCrmOpen((value) => !value);
-                                }
-                            }}
-                            title={collapsed ? "CRM" : undefined}
-                            className={[
-                                "group flex h-11 w-full items-center rounded-xl text-slate-600 transition hover:bg-slate-100 hover:text-slate-900",
-                                collapsed ? "justify-center" : "justify-between px-3",
-                            ].join(" ")}
-                        >
-                            <span
-                                className={[
-                                    "flex items-center",
-                                    collapsed ? "" : "gap-3",
-                                ].join(" ")}
-                            >
-                                <Icon name="crm" size={19} />
+                    <nav aria-label="Patient management" className="space-y-1">
+                        {patientNavigation.map(renderLink)}
+                    </nav>
+                    {renderSectionLabel("AI Reception & Automation")}
+                    <nav aria-label="AI reception and automation" className="space-y-1">
+                        {aiAutomationNavigation.map(renderLink)}
+                    </nav>
 
-                                {!collapsed && (
-                                    <span className="text-[13px] font-medium">CRM</span>
-                                )}
-                            </span>
-
-                            {!collapsed && (
-                                <span
-                                    className={[
-                                        "transition-transform duration-200",
-                                        crmOpen ? "rotate-90" : "",
-                                    ].join(" ")}
-                                >
-                                    <Icon name="chevron" size={15} />
-                                </span>
-                            )}
-                        </button>
-
-                        {!collapsed && crmOpen && (
-                            <div className="ml-7 mt-1 space-y-1 border-l border-slate-200 pl-3">
-                                {crmNavigation.map((item) => {
-                                    const active = isActive(item.href);
-
-                                    return (
-                                        <Link
-                                            key={item.href}
-                                            href={item.href}
-                                            onClick={handleNavigation}
-                                            className={[
-                                                "flex h-9 items-center rounded-lg px-3 text-[12px] font-medium transition",
-                                                active
-                                                    ? "bg-slate-100 text-slate-900"
-                                                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900",
-                                            ].join(" ")}
-                                        >
-                                            {item.name}
-                                        </Link>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
+                    {renderSectionLabel("Clinic Operations")}
+                    <nav aria-label="Clinic operations" className="space-y-1">
+                        {operationsNavigation.map(renderLink)}
+                    </nav>
                 </div>
 
-                {/* ---------------------------------------------------------------- */}
-                {/* Bottom                                                           */}
-                {/* ---------------------------------------------------------------- */}
-
+                {/* Account and actions */}
                 <div className="shrink-0 border-t border-slate-100 p-3">
                     {!collapsed && (
                         <div className="mb-2 rounded-xl bg-slate-50 px-3 py-2.5">
                             <div className="truncate text-[12px] font-semibold text-slate-800">
                                 Clinic Account
                             </div>
-
                             <div className="mt-0.5 text-[10px] font-medium capitalize text-slate-400">
                                 {role || "User"}
                             </div>
@@ -488,13 +418,15 @@ export default function Sidebar({
                         href="/settings"
                         onClick={handleNavigation}
                         title={collapsed ? "Settings" : undefined}
+                        aria-current={
+                            isRouteActive(pathname, "/settings") ? "page" : undefined
+                        }
                         className={[
                             "mb-1 flex h-10 items-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900",
                             collapsed ? "justify-center" : "gap-3 px-3",
                         ].join(" ")}
                     >
                         <Icon name="settings" size={18} />
-
                         {!collapsed && (
                             <span className="text-[13px] font-medium">Settings</span>
                         )}
@@ -510,7 +442,6 @@ export default function Sidebar({
                         ].join(" ")}
                     >
                         <Icon name="logout" size={18} />
-
                         {!collapsed && (
                             <span className="text-[13px] font-medium">Logout</span>
                         )}
@@ -520,3 +451,4 @@ export default function Sidebar({
         </>
     );
 }
+

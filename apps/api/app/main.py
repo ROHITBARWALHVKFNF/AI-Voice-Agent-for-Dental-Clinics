@@ -21,6 +21,11 @@ from app.api.doctor_schedule_break import (
 )
 from app.api import doctor_slot_capacities
 from app.api.receptionist import router as receptionist_router
+from app.api.finance import router as finance_router
+from app.api.analytics import router as analytics_router
+
+from app.api.knowledge_base import router as knowledge_base_router
+from app.api.calls import router as calls_router
 
 
 app = FastAPI(
@@ -64,6 +69,14 @@ app.include_router(doctor_schedule_breaks_router)
 app.include_router(doctor_slot_capacities.router)
 
 app.include_router(receptionist_router)
+app.include_router(finance_router)
+app.include_router(analytics_router)
+
+app.include_router(knowledge_base_router)
+app.include_router(calls_router)
+
+
+
 
 @app.get("/")
 def root():

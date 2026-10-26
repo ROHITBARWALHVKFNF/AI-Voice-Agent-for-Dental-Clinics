@@ -38,14 +38,24 @@ type ApiFetchOptions = RequestInit & {
 
 export async function apiFetch(
   path: string,
-  options: ApiFetchOptions = {},
+  options: ApiFetchOptions = {}
 ): Promise<Response> {
   const { skipAuth = false, ...fetchOptions } = options;
 
   const url = `${API_URL}${path.startsWith("/") ? path : `/${path}`}`;
   const headers = new Headers(fetchOptions.headers);
 
-  if (fetchOptions.body != null && !headers.has("Content-Type")) {
+  const isFormData =
+    typeof FormData !== "undefined" &&
+    fetchOptions.body instanceof FormData;
+
+  // Let the browser set the multipart boundary for file uploads.
+  if (isFormData) {
+    headers.delete("Content-Type");
+  } else if (
+    fetchOptions.body != null &&
+    !headers.has("Content-Type")
+  ) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -73,7 +83,9 @@ export async function apiFetch(
       error instanceof Error ? error.message : "Unknown network error";
 
     throw new Error(
-      `Cannot reach the API at ${url}. Check that the backend is running, the URL is reachable from this browser, and CORS allows this frontend origin. Details: ${reason}`,
+      `Cannot reach the API at ${url}. Check that the backend is running, ` +
+        `the URL is reachable from this browser, and CORS allows this frontend origin. ` +
+        `Details: ${reason}`
     );
   }
 
@@ -86,7 +98,7 @@ export async function apiFetch(
 
 export async function apiJson<T>(
   path: string,
-  options: ApiFetchOptions = {},
+  options: ApiFetchOptions = {}
 ): Promise<T> {
   const response = await apiFetch(path, options);
   const contentType = response.headers.get("content-type") || "";
@@ -102,11 +114,7 @@ export async function apiJson<T>(
   if (!response.ok) {
     let message = `Request failed with HTTP ${response.status}.`;
 
-    if (
-      typeof data === "object" &&
-      data !== null &&
-      "detail" in data
-    ) {
+    if (typeof data === "object" && data !== null && "detail" in data) {
       const detail = (data as { detail?: unknown }).detail;
 
       if (typeof detail === "string") {

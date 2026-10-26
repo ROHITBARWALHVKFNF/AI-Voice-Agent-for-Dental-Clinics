@@ -34,6 +34,8 @@ import {
   getOrganizationId,
 } from "@/lib/api";
 
+import AppShell from "@/components/layout/AppShell";
+
 // --------------------------------------------------
 // Types
 // --------------------------------------------------
@@ -462,6 +464,7 @@ export default function FollowUpsPage() {
   // --------------------------------------------------
 
   return (
+     <AppShell>
     <div className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Header */}
@@ -1197,6 +1200,7 @@ export default function FollowUpsPage() {
         </Modal>
       )}
     </div>
+    </AppShell>
   );
 }
 

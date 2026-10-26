@@ -1,0 +1,1101 @@
+
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { apiJson } from "@/lib/api";
+import AppShell from "@/components/layout/AppShell";
+
+type Tab = "overview" | "invoices" | "payments" | "expenses";
+
+type FinanceSummary = {
+  start_date: string;
+  end_date: string;
+  actual_collections: number | string;
+  completed_treatment_value: number | string;
+  billed_amount: number | string;
+  expenses: number | string;
+  profit: number | string;
+  currency: string;
+  note?: string;
+};
+
+type Invoice = {
+  id: string;
+  patient_id: string;
+  invoice_number: string;
+  invoice_date: string;
+  due_date?: string | null;
+  subtotal: number | string;
+  tax_amount: number | string;
+  discount_amount: number | string;
+  total_amount: number | string;
+  status: string;
+  notes?: string | null;
+};
+
+type Payment = {
+  id: string;
+  invoice_id: string;
+  amount: number | string;
+  payment_method: string;
+  paid_at: string;
+  reference?: string | null;
+  notes?: string | null;
+};
+
+type Expense = {
+  id: string;
+  category: string;
+  description: string;
+  amount: number | string;
+  incurred_at: string;
+  payment_method?: string | null;
+  reference?: string | null;
+  notes?: string | null;
+};
+
+const today = () => {
+  const date = new Date();
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+};
+
+const initialDate = today();
+
+const money = (
+  value: number | string | undefined,
+  currency = "INR",
+) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(Number(value ?? 0));
+
+const dateLabel = (value?: string | null) => {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+};
+
+const inputClass =
+  "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100";
+
+const buttonClass =
+  "rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50";
+
+export default function FinancePage() {
+  const [tab, setTab] = useState<Tab>("overview");
+  const [startDate, setStartDate] = useState(initialDate);
+  const [endDate, setEndDate] = useState(initialDate);
+
+  const [summary, setSummary] = useState<FinanceSummary | null>(null);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+
+  const [invoiceForm, setInvoiceForm] = useState({
+    patient_id: "",
+    invoice_number: "",
+    invoice_date: initialDate,
+    due_date: "",
+    subtotal: "",
+    tax_amount: "0",
+    discount_amount: "0",
+    status: "sent",
+    notes: "",
+  });
+
+  const [paymentForm, setPaymentForm] = useState({
+    invoice_id: "",
+    amount: "",
+    payment_method: "upi",
+    reference: "",
+    notes: "",
+  });
+
+  const [expenseForm, setExpenseForm] = useState({
+    category: "supplies",
+    description: "",
+    amount: "",
+    payment_method: "upi",
+    reference: "",
+    notes: "",
+  });
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    const query = new URLSearchParams({
+      start_date: startDate,
+      end_date: endDate,
+    }).toString();
+
+    const results = await Promise.allSettled([
+      apiJson<FinanceSummary>(`/finance/summary?${query}`),
+      apiJson<Invoice[]>("/finance/invoices"),
+      apiJson<Payment[]>("/finance/payments"),
+      apiJson<Expense[]>(`/finance/expenses?${query}`),
+    ]);
+
+    if (results[0].status === "fulfilled") {
+      setSummary(results[0].value);
+    }
+
+    if (results[1].status === "fulfilled") {
+      setInvoices(results[1].value);
+    }
+
+    if (results[2].status === "fulfilled") {
+      setPayments(results[2].value);
+    }
+
+    if (results[3].status === "fulfilled") {
+      setExpenses(results[3].value);
+    }
+
+    const failures = results.filter(
+      (result) => result.status === "rejected",
+    );
+
+    if (failures.length) {
+      setError(
+        failures
+          .map((result) =>
+            result.status === "rejected"
+              ? result.reason instanceof Error
+                ? result.reason.message
+                : "A finance request failed."
+              : "",
+          )
+          .join(" "),
+      );
+    }
+
+    setLoading(false);
+  }, [startDate, endDate]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const submitRecord = async (
+    path: string,
+    body: Record<string, unknown>,
+    closeForm: () => void,
+  ) => {
+    setSaving(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      await apiJson(path, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+
+      setSuccess("Record saved successfully.");
+      closeForm();
+      await loadData();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not save the record.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const outstanding = invoices.reduce((total, invoice) => {
+    if (["paid", "void", "draft"].includes(invoice.status.toLowerCase())) {
+      return total;
+    }
+
+    const paid = payments
+      .filter((payment) => payment.invoice_id === invoice.id)
+      .reduce((sum, payment) => sum + Number(payment.amount), 0);
+
+    return total + Math.max(0, Number(invoice.total_amount) - paid);
+  }, 0);
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "invoices", label: "Invoices" },
+    { id: "payments", label: "Payments" },
+    { id: "expenses", label: "Expenses" },
+  ];
+
+  return (
+    <AppShell>
+    <div className="mx-auto max-w-[1500px] space-y-6 p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+            Clinic operations
+          </p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+            Finance
+          </h1>
+          <p className="mt-2 text-sm text-slate-500">
+            Track clinic collections, invoices, payments, and expenses.
+          </p>
+        </div>
+        
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            onClick={() => {
+              setStartDate(initialDate);
+              setEndDate(initialDate);
+            }}
+          >
+            Today
+          </button>
+          <button
+            className={buttonClass}
+            onClick={() => {
+              setInvoiceForm({
+                patient_id: "",
+                invoice_number: "",
+                invoice_date: today(),
+                due_date: "",
+                subtotal: "",
+                tax_amount: "0",
+                discount_amount: "0",
+                status: "sent",
+                notes: "",
+              });
+              setShowInvoiceForm(true);
+            }}
+          >
+            + New invoice
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {tabs.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setTab(item.id)}
+            className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+              tab === item.id
+                ? "bg-slate-900 text-white"
+                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-end">
+        <label className="text-xs font-semibold text-slate-500">
+          From
+          <input
+            type="date"
+            className={inputClass}
+            value={startDate}
+            onChange={(event) => setStartDate(event.target.value)}
+          />
+        </label>
+        <label className="text-xs font-semibold text-slate-500">
+          To
+          <input
+            type="date"
+            className={inputClass}
+            value={endDate}
+            onChange={(event) => setEndDate(event.target.value)}
+          />
+        </label>
+        <button
+          className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          onClick={() => void loadData()}
+          disabled={loading}
+        >
+          {loading ? "Refreshing…" : "Refresh"}
+        </button>
+      </section>
+
+      {error && (
+        <div
+          role="alert"
+          className="whitespace-pre-wrap rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+        >
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div
+          role="status"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"
+        >
+          {success}
+        </div>
+      )}
+
+      {loading && !summary ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
+          Loading finance records…
+        </div>
+      ) : (
+        <>
+          {(tab === "overview" || tab === "expenses") && (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <Metric
+                label="Actual collections"
+                value={money(summary?.actual_collections, summary?.currency)}
+                description="Payments received in selected period"
+              />
+              <Metric
+                label="Recorded expenses"
+                value={money(summary?.expenses, summary?.currency)}
+                description="Expenses entered in this system"
+              />
+              <Metric
+                label="Collections minus expenses"
+                value={money(summary?.profit, summary?.currency)}
+                description="Not full accounting profit"
+              />
+              <Metric
+                label="Invoice balance estimate"
+                value={money(outstanding, summary?.currency)}
+                description="Based on listed invoices and payments"
+              />
+            </div>
+          )}
+
+          {tab === "overview" && (
+            <div className="grid gap-5 xl:grid-cols-2">
+              <section className="rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="font-bold text-slate-900">
+                      Recent invoices
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Latest invoices recorded for this clinic
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setTab("invoices")}
+                    className="text-sm font-semibold text-slate-600 hover:text-slate-900"
+                  >
+                    View all
+                  </button>
+                </div>
+                <InvoiceTable invoices={invoices.slice(0, 5)} currency={summary?.currency} />
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="font-bold text-slate-900">
+                      Recent expenses
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Expenses in the selected date range
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setTab("expenses")}
+                    className="text-sm font-semibold text-slate-600 hover:text-slate-900"
+                  >
+                    View all
+                  </button>
+                </div>
+                <ExpenseTable expenses={expenses.slice(0, 5)} currency={summary?.currency} />
+              </section>
+            </div>
+          )}
+
+          {tab === "invoices" && (
+            <section className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-slate-900">All invoices</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {invoices.length} invoice records
+                  </p>
+                </div>
+                <button
+                  className={buttonClass}
+                  onClick={() => setShowInvoiceForm(true)}
+                >
+                  + New invoice
+                </button>
+              </div>
+              <InvoiceTable invoices={invoices} currency={summary?.currency} />
+            </section>
+          )}
+
+          {tab === "payments" && (
+            <section className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-slate-900">Payment history</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {payments.length} payment records
+                  </p>
+                </div>
+                <button
+                  className={buttonClass}
+                  onClick={() => setShowPaymentForm(true)}
+                >
+                  + Record payment
+                </button>
+              </div>
+              <PaymentTable payments={payments} currency={summary?.currency} />
+            </section>
+          )}
+
+          {tab === "expenses" && (
+            <section className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-slate-900">Clinic expenses</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {expenses.length} expense records in the selected period
+                  </p>
+                </div>
+                <button
+                  className={buttonClass}
+                  onClick={() => setShowExpenseForm(true)}
+                >
+                  + Add expense
+                </button>
+              </div>
+              <ExpenseTable expenses={expenses} currency={summary?.currency} />
+            </section>
+          )}
+
+          {summary?.note && (
+            <p className="text-xs leading-5 text-slate-500">{summary.note}</p>
+          )}
+        </>
+      )}
+
+      {showInvoiceForm && (
+        <Modal title="Create invoice" onClose={() => setShowInvoiceForm(false)}>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitRecord(
+                "/finance/invoices",
+                {
+                  patient_id: invoiceForm.patient_id.trim(),
+                  invoice_number: invoiceForm.invoice_number.trim(),
+                  invoice_date: invoiceForm.invoice_date,
+                  due_date: invoiceForm.due_date || null,
+                  subtotal: invoiceForm.subtotal,
+                  tax_amount: invoiceForm.tax_amount || "0",
+                  discount_amount: invoiceForm.discount_amount || "0",
+                  status: invoiceForm.status,
+                  notes: invoiceForm.notes || null,
+                },
+                () => setShowInvoiceForm(false),
+              );
+            }}
+          >
+            <Field label="Patient ID">
+              <input
+                required
+                className={inputClass}
+                value={invoiceForm.patient_id}
+                onChange={(e) =>
+                  setInvoiceForm({ ...invoiceForm, patient_id: e.target.value })
+                }
+                placeholder="Paste the patient's ID"
+              />
+            </Field>
+            <Field label="Invoice number">
+              <input
+                required
+                className={inputClass}
+                value={invoiceForm.invoice_number}
+                onChange={(e) =>
+                  setInvoiceForm({
+                    ...invoiceForm,
+                    invoice_number: e.target.value,
+                  })
+                }
+                placeholder="INV-2026-001"
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Invoice date">
+                <input
+                  type="date"
+                  required
+                  className={inputClass}
+                  value={invoiceForm.invoice_date}
+                  onChange={(e) =>
+                    setInvoiceForm({
+                      ...invoiceForm,
+                      invoice_date: e.target.value,
+                    })
+                  }
+                />
+              </Field>
+              <Field label="Due date">
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={invoiceForm.due_date}
+                  onChange={(e) =>
+                    setInvoiceForm({ ...invoiceForm, due_date: e.target.value })
+                  }
+                />
+              </Field>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Subtotal ₹">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  className={inputClass}
+                  value={invoiceForm.subtotal}
+                  onChange={(e) =>
+                    setInvoiceForm({ ...invoiceForm, subtotal: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Tax ₹">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className={inputClass}
+                  value={invoiceForm.tax_amount}
+                  onChange={(e) =>
+                    setInvoiceForm({ ...invoiceForm, tax_amount: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Discount ₹">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className={inputClass}
+                  value={invoiceForm.discount_amount}
+                  onChange={(e) =>
+                    setInvoiceForm({
+                      ...invoiceForm,
+                      discount_amount: e.target.value,
+                    })
+                  }
+                />
+              </Field>
+            </div>
+            <Field label="Initial status">
+              <select
+                className={inputClass}
+                value={invoiceForm.status}
+                onChange={(e) =>
+                  setInvoiceForm({ ...invoiceForm, status: e.target.value })
+                }
+              >
+                <option value="draft">Draft</option>
+                <option value="sent">Sent</option>
+              </select>
+            </Field>
+            <Field label="Notes">
+              <textarea
+                className={inputClass}
+                rows={2}
+                value={invoiceForm.notes}
+                onChange={(e) =>
+                  setInvoiceForm({ ...invoiceForm, notes: e.target.value })
+                }
+              />
+            </Field>
+            <FormActions
+              saving={saving}
+              onCancel={() => setShowInvoiceForm(false)}
+            />
+          </form>
+        </Modal>
+      )}
+
+      {showPaymentForm && (
+        <Modal title="Record payment" onClose={() => setShowPaymentForm(false)}>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitRecord(
+                "/finance/payments",
+                {
+                  invoice_id: paymentForm.invoice_id,
+                  amount: paymentForm.amount,
+                  payment_method: paymentForm.payment_method,
+                  reference: paymentForm.reference || null,
+                  notes: paymentForm.notes || null,
+                },
+                () => setShowPaymentForm(false),
+              );
+            }}
+          >
+            <Field label="Invoice">
+              <select
+                required
+                className={inputClass}
+                value={paymentForm.invoice_id}
+                onChange={(e) =>
+                  setPaymentForm({
+                    ...paymentForm,
+                    invoice_id: e.target.value,
+                  })
+                }
+              >
+                <option value="">Select an invoice</option>
+                {invoices
+                  .filter(
+                    (invoice) =>
+                      !["paid", "void", "draft"].includes(
+                        invoice.status.toLowerCase(),
+                      ),
+                  )
+                  .map((invoice) => (
+                    <option key={invoice.id} value={invoice.id}>
+                      {invoice.invoice_number} — {money(invoice.total_amount, summary?.currency)}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+            <Field label="Amount received ₹">
+              <input
+                required
+                type="number"
+                min="0.01"
+                step="0.01"
+                className={inputClass}
+                value={paymentForm.amount}
+                onChange={(e) =>
+                  setPaymentForm({ ...paymentForm, amount: e.target.value })
+                }
+              />
+            </Field>
+            <Field label="Payment method">
+              <select
+                className={inputClass}
+                value={paymentForm.payment_method}
+                onChange={(e) =>
+                  setPaymentForm({
+                    ...paymentForm,
+                    payment_method: e.target.value,
+                  })
+                }
+              >
+                <option value="upi">UPI</option>
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="insurance_claim">Insurance claim</option>
+              </select>
+            </Field>
+            <Field label="Reference">
+              <input
+                className={inputClass}
+                value={paymentForm.reference}
+                onChange={(e) =>
+                  setPaymentForm({ ...paymentForm, reference: e.target.value })
+                }
+              />
+            </Field>
+            <Field label="Notes">
+              <textarea
+                className={inputClass}
+                rows={2}
+                value={paymentForm.notes}
+                onChange={(e) =>
+                  setPaymentForm({ ...paymentForm, notes: e.target.value })
+                }
+              />
+            </Field>
+            <FormActions
+              saving={saving}
+              onCancel={() => setShowPaymentForm(false)}
+            />
+          </form>
+        </Modal>
+      )}
+
+      {showExpenseForm && (
+        <Modal title="Add clinic expense" onClose={() => setShowExpenseForm(false)}>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitRecord(
+                "/finance/expenses",
+                {
+                  category: expenseForm.category,
+                  description: expenseForm.description.trim(),
+                  amount: expenseForm.amount,
+                  payment_method: expenseForm.payment_method,
+                  reference: expenseForm.reference || null,
+                  notes: expenseForm.notes || null,
+                },
+                () => setShowExpenseForm(false),
+              );
+            }}
+          >
+            <Field label="Category">
+              <select
+                className={inputClass}
+                value={expenseForm.category}
+                onChange={(e) =>
+                  setExpenseForm({ ...expenseForm, category: e.target.value })
+                }
+              >
+                <option value="supplies">Supplies</option>
+                <option value="rent">Rent</option>
+                <option value="salaries">Salaries</option>
+                <option value="equipment">Equipment</option>
+                <option value="utilities">Utilities</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="marketing">Marketing</option>
+                <option value="other">Other</option>
+              </select>
+            </Field>
+            <Field label="Description">
+              <input
+                required
+                className={inputClass}
+                value={expenseForm.description}
+                onChange={(e) =>
+                  setExpenseForm({
+                    ...expenseForm,
+                    description: e.target.value,
+                  })
+                }
+              />
+            </Field>
+            <Field label="Amount ₹">
+              <input
+                required
+                type="number"
+                min="0.01"
+                step="0.01"
+                className={inputClass}
+                value={expenseForm.amount}
+                onChange={(e) =>
+                  setExpenseForm({ ...expenseForm, amount: e.target.value })
+                }
+              />
+            </Field>
+            <Field label="Payment method">
+              <select
+                className={inputClass}
+                value={expenseForm.payment_method}
+                onChange={(e) =>
+                  setExpenseForm({
+                    ...expenseForm,
+                    payment_method: e.target.value,
+                  })
+                }
+              >
+                <option value="upi">UPI</option>
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="bank_transfer">Bank transfer</option>
+              </select>
+            </Field>
+            <Field label="Reference">
+              <input
+                className={inputClass}
+                value={expenseForm.reference}
+                onChange={(e) =>
+                  setExpenseForm({ ...expenseForm, reference: e.target.value })
+                }
+              />
+            </Field>
+            <Field label="Notes">
+              <textarea
+                className={inputClass}
+                rows={2}
+                value={expenseForm.notes}
+                onChange={(e) =>
+                  setExpenseForm({ ...expenseForm, notes: e.target.value })
+                }
+              />
+            </Field>
+            <FormActions
+              saving={saving}
+              onCancel={() => setShowExpenseForm(false)}
+            />
+          </form>
+        </Modal>
+      )}
+    </div>
+    </AppShell>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  description,
+}: {
+  label: string;
+  value: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <p className="text-sm font-medium text-slate-500">{label}</p>
+      <p className="mt-3 break-words text-2xl font-bold tracking-tight text-slate-900">
+        {value}
+      </p>
+      <p className="mt-2 text-xs leading-5 text-slate-400">{description}</p>
+    </div>
+  );
+}
+
+function InvoiceTable({ invoices, currency = "INR" }: { invoices: Invoice[]; currency?: string }) {
+  if (!invoices.length) return <Empty text="No invoices found." />;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 text-xs text-slate-400">
+            <th className="py-3 pr-4 font-medium">Invoice</th>
+            <th className="py-3 pr-4 font-medium">Date</th>
+            <th className="py-3 pr-4 font-medium">Total</th>
+            <th className="py-3 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {invoices.map((invoice) => (
+            <tr key={invoice.id} className="border-b border-slate-50 last:border-0">
+              <td className="py-3 pr-4">
+                <div className="font-semibold text-slate-800">
+                  {invoice.invoice_number}
+                </div>
+                <div className="mt-1 max-w-48 truncate text-xs text-slate-400">
+                  {invoice.patient_id}
+                </div>
+              </td>
+              <td className="whitespace-nowrap py-3 pr-4 text-slate-500">
+                {dateLabel(invoice.invoice_date)}
+              </td>
+              <td className="whitespace-nowrap py-3 pr-4 font-semibold text-slate-800">
+                {money(invoice.total_amount, currency)}
+              </td>
+              <td className="py-3">
+                <Status value={invoice.status} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PaymentTable({ payments, currency = "INR" }: { payments: Payment[]; currency?: string }) {
+  if (!payments.length) return <Empty text="No payments found." />;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 text-xs text-slate-400">
+            <th className="py-3 pr-4 font-medium">Date</th>
+            <th className="py-3 pr-4 font-medium">Invoice ID</th>
+            <th className="py-3 pr-4 font-medium">Method</th>
+            <th className="py-3 font-medium">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {payments.map((payment) => (
+            <tr key={payment.id} className="border-b border-slate-50 last:border-0">
+              <td className="whitespace-nowrap py-3 pr-4 text-slate-500">
+                {dateLabel(payment.paid_at)}
+              </td>
+              <td className="max-w-48 truncate py-3 pr-4 text-xs text-slate-500">
+                {payment.invoice_id}
+              </td>
+              <td className="py-3 pr-4 capitalize text-slate-600">
+                {payment.payment_method.replaceAll("_", " ")}
+              </td>
+              <td className="whitespace-nowrap py-3 font-semibold text-slate-800">
+                {money(payment.amount, currency)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ExpenseTable({ expenses, currency = "INR" }: { expenses: Expense[]; currency?: string }) {
+  if (!expenses.length) return <Empty text="No expenses in this period." />;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 text-xs text-slate-400">
+            <th className="py-3 pr-4 font-medium">Expense</th>
+            <th className="py-3 pr-4 font-medium">Date</th>
+            <th className="py-3 pr-4 font-medium">Method</th>
+            <th className="py-3 font-medium">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {expenses.map((expense) => (
+            <tr key={expense.id} className="border-b border-slate-50 last:border-0">
+              <td className="py-3 pr-4">
+                <div className="font-semibold capitalize text-slate-800">
+                  {expense.description}
+                </div>
+                <div className="mt-1 text-xs capitalize text-slate-400">
+                  {expense.category}
+                </div>
+              </td>
+              <td className="whitespace-nowrap py-3 pr-4 text-slate-500">
+                {dateLabel(expense.incurred_at)}
+              </td>
+              <td className="py-3 pr-4 capitalize text-slate-600">
+                {expense.payment_method?.replaceAll("_", " ") || "—"}
+              </td>
+              <td className="whitespace-nowrap py-3 font-semibold text-slate-800">
+                {money(expense.amount, currency)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Status({ value }: { value: string }) {
+  const normalized = value.toLowerCase();
+  const style =
+    normalized === "paid"
+      ? "bg-emerald-50 text-emerald-700"
+      : normalized === "void"
+        ? "bg-red-50 text-red-700"
+        : normalized === "draft"
+          ? "bg-slate-100 text-slate-600"
+          : "bg-amber-50 text-amber-700";
+
+  return (
+    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${style}`}>
+      {value.replaceAll("_", " ")}
+    </span>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return (
+    <div className="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+      {text}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block text-sm font-medium text-slate-700">
+      {label}
+      {children}
+    </label>
+  );
+}
+
+function Modal({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/40 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl sm:p-6">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-3 py-1.5 text-slate-500 hover:bg-slate-100"
+            aria-label="Close dialog"
+          >
+            ✕
+          </button>
+        </div>
+        {children}
+      </section>
+    </div>
+  );
+}
+
+function FormActions({
+  saving,
+  onCancel,
+}: {
+  saving: boolean;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
+      <button
+        type="button"
+        onClick={onCancel}
+        className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+      >
+        Cancel
+      </button>
+      <button type="submit" disabled={saving} className={buttonClass}>
+        {saving ? "Saving…" : "Save record"}
+      </button>
+    </div>
+  );
+}
+
+
+
+

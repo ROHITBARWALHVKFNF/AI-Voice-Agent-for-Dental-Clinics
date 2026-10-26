@@ -12,6 +12,12 @@ from app.models.follow_up import FollowUp
 from app.models.plan import Plan
 from app.models.subscription import Subscription
 from app.models.doctor_slot_capacity import DoctorSlotCapacity
+from app.models.invoice import Invoice
+from app.models.payment import Payment
+from app.models.clinic_expense import ClinicExpense
+from app.models.knowledge_source import KnowledgeSource
+from app.models.call_record import CallRecord
+
 
 __all__ = [
     "Doctor",
@@ -27,4 +33,13 @@ __all__ = [
     "FollowUp",
     "Plan",
     "Subscription",
+    "Invoice",
+    "Payment",
+    "ClinicExpense",
+    "KnowledgeSource",
+    "CallRecord",
+    "Invoice", 
+    "InvoiceItem",
+    "Payment", 
+    "Expense",
 ]
